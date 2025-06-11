@@ -1,60 +1,19 @@
 import express from "express";
 import multer from "multer";
 import Blog from "../models/blog.js";
-import path from "path";
-import fs from "fs";
-import { fileExists, deleteFile, cleanupUnusedImages } from '../utils/imageUtils.js';
 
 const router = express.Router();
 
 // Configure Multer for Image Upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), "uploads");
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
+    cb(null, "uploads/");
   },
   filename: (req, file, cb) => {
-    // Create a URL-safe filename
-    const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.]/g, '-');
-    cb(null, `${Date.now()}-${sanitizedFilename}`);
+    cb(null, Date.now() + "-" + file.originalname);
   },
 });
-
-// Add file filter for image validation
-const fileFilter = (req, file, cb) => {
-  // Accept only jpeg, jpg, and png files
-  if (file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Not an image! Please upload an image file.'), false);
-  }
-};
-
-const upload = multer({ 
-  storage,
-  fileFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  }
-});
-
-// Add periodic cleanup of unused images (run every 24 hours)
-setInterval(async () => {
-  try {
-    // Get all blogs to check which images are in use
-    const blogs = await Blog.find({});
-    const usedImagePaths = blogs.map(blog => blog.image).filter(Boolean);
-    
-    // Run cleanup
-    const uploadsDir = path.join(process.cwd(), "uploads");
-    await cleanupUnusedImages(uploadsDir, usedImagePaths);
-  } catch (error) {
-    console.error('Error in image cleanup:', error);
-  }
-}, 24 * 60 * 60 * 1000);
+const upload = multer({ storage });
 
 // Route: Create a New Blog
 router.post("/create", upload.single("image"), async (req, res) => {
@@ -63,14 +22,9 @@ router.post("/create", upload.single("image"), async (req, res) => {
     console.log("Uploaded file:", req.file);
 
     const { name, title, description, author } = req.body;
-    // Store the relative path in the database
-    const image = req.file ? path.join('uploads', req.file.filename).replace(/\\/g, '/') : null;
+    const image = req.file ? `/uploads/${req.file.filename}` : null;
 
     if (!name || !title || !description || !image) {
-      // Delete uploaded file if validation fails
-      if (req.file) {
-        await deleteFile(req.file.path);
-      }
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -78,10 +32,6 @@ router.post("/create", upload.single("image"), async (req, res) => {
     const newBlog = await Blog.create({ name, title, description, image, author });
     res.status(201).json({ message: "Blog created successfully, pending admin approval", blog: newBlog });
   } catch (error) {
-    // Delete uploaded file if blog creation fails
-    if (req.file) {
-      await deleteFile(req.file.path);
-    }
     console.error("Error in /create:", error);
     res.status(500).json({ message: "Internal server error" });
   }
