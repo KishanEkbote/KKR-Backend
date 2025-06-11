@@ -7,6 +7,7 @@ const blogSchema = new mongoose.Schema(
     description: { type: String, required: true },
     image: { type: String, required: true }, // Store image path
     author: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
     createdAt : { type: Date, default: Date.now },
   },
   { timestamps: true }
