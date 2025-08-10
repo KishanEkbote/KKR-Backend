@@ -4,30 +4,36 @@ import Blog from "../models/blog.js";
 
 const router = express.Router();
 
-// Configure Multer for Image Upload
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
+// Configure Multer for Image Upload (memory storage)
+
+// Route: Serve Blog Image by Blog ID
+router.get("/image/:id", async (req, res) => {
+  try {
+    const blog = await Blog.findById(req.params.id);
+    if (!blog || !blog.image || !blog.image.data) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+    res.set("Content-Type", blog.image.contentType);
+    res.send(blog.image.data);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 // Route: Create a New Blog
 router.post("/create", upload.single("image"), async (req, res) => {
   try {
-    console.log("Request received:", req.body);
-    console.log("Uploaded file:", req.file);
-
     const { name, title, description, author } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : null;
-
-    if (!name || !title || !description || !image) {
+    if (!name || !title || !description || !req.file) {
       return res.status(400).json({ message: "All fields are required" });
     }
-
+    // Store image as Buffer and contentType
+    const image = {
+      data: req.file.buffer,
+      contentType: req.file.mimetype,
+    };
     // Blog is created with status 'pending' by default
     const newBlog = await Blog.create({ name, title, description, image, author });
     res.status(201).json({ message: "Blog created successfully, pending admin approval", blog: newBlog });
@@ -40,7 +46,7 @@ router.post("/create", upload.single("image"), async (req, res) => {
 // Route: Get All Blogs (only approved)
 router.get("/", async (req, res) => {
   try {
-    const blogs = await Blog.find({ status: "approved" });
+    const blogs = await Blog.find({ status: "pending" });
     res.json(blogs);
   } catch (error) {
     res.status(500).json({ message: error.message });
